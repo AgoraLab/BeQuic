@@ -1,3 +1,11 @@
+# 0 前言
+
+本项目fork自[github.com/sonysuqin/BeQuic](https://github.com/sonysuqin/BeQuic)。
+
+原项目将chromium中的quic实现封装成bequic，并将其嵌入到了ffmpeg。近期发现其中的很多代码，无法在最新版的chromium源码中编译，经过若干调整，最终使其顺利编译通过，因此上传此项目。
+
+注：所有修改，均只在Linux平台（Ubuntu 18.04）上编译并测试通过，其它平台没有验证，但涉及到具体平台的修改应该不大。
+
 # 1 背景
 
 QUIC也就是HTTP3，是Google为了解决HTTP2的一些问题提出的基于UDP的传输方案。HTTP2由于队头堵塞、握手延迟等缺陷并没有普及，相反由于QUIC的优势，Youtube已经全面使用了QUIC。现在去看Youtube的视频，对一个HTTP1/2的请求，Youtube返回的HTTP1/2响应中会携带一个支持QUIC协议的头，Chrome缓存该头中携带的地址，下次对该地址的请求会以QUIC协议发出，之后跟该服务的数据交互将以基于UDP的QUIC协议进行。
@@ -261,7 +269,7 @@ git clone https://github.com/sonysuqin/FFmpeg.git
 |:--|:--|
 | Ubuntu| 18.04 |
 | gcc/g++ |  Ubuntu 8.4.0-1ubuntu1~18.04) |
-| Chromium |  最新版，版本号ec12ef7159674fc37fd340f12aeb81fccfb547a6 |
+| Chromium |  最新版，版本号6d8828f6a6eea769a05fa1c0b7acf10aca631d4a|
 | FFMpeg |  4.1.quic |
 ### 4.3.2 目录结构
 确保目录结构如下
@@ -310,7 +318,9 @@ ninja -C out/linux_release_x64_notcmalloc libbequic
 git clone https://github.com/sonysuqin/FFmpeg.git
 ```
 切换ffmepg版本为： **4.1.quic** 
+
 #### 4.3.4.2 configure
+
 在FFmpeg下创建build目录，并进入FFmpeg/build目录，执行
 
 ```
@@ -354,6 +364,7 @@ export LD_LIBRARY_PATH=<filepath>/ffmpeg/build/lib
 ```
 ./ffplay quic://www.example.org:6121 -timeout 1000 -verify_certificate 1
 ```
+
 ## 4.4 iOS
 ### 4.4.1 编译环境
 | 软件| 版本|
@@ -441,59 +452,17 @@ install_name_tool -id @rpath/libbequic.dylib libbequic.dylib
 Mac OSX.
 
 # 5 测试
-在Google的[Playing With QUIC](https://www.chromium.org/quic/playing-with-quic)页面有测试的详细介绍，这里只介绍Windows端的测试步骤，Linux、Mac OSX的步骤类似，都是用ffplay播放，Android、iOS平台没有编译ffplay，只是写了简单的测试程序调用FFmpeg的API，通过QUIC协议获取到数据即可。
-## 5.1 准备测试文件
-### 5.1.1 准备文件源
-另外准备一个HTTP服务，例如nginx，假设其地址为192.168.116.133，在其html根目录放置一个文件：1.mp4；
-### 5.1.2 修改hosts
-在本机(Windows10)修改hosts，域名指向nginx的地址；
-```
-192.168.116.133 www.example.org
-```
-### 5.1.3 下载文件源并保留HTTP头
-在MSYS2下面，执行：
-```
-mkdir /tmp/quic-data
-cd /tmp/quic-data
-wget -p --save-headers http://www.example.org/1.mp4
-```
-### 5.1.4 修改HTTP头
-使用编辑器(例如vi)修改/tmp/quic-data/www.example.org/1.mp4，修改其HTTP头：
-* 如果有"Transfer-Encoding: chunked"头就删除；
-* 如果有"Alternate-Protocol"头就删除；
-* 增加"X-Original-Url: https://www.example.org/"头。
 
-### 5.1.5 修改hosts 
-在本机(Windows10)修改hosts，域名指向本地；
-```
-127.0.0.1 www.example.org
-```
-## 5.2 生成并安装证书
-主要用于quic-server。
-### 5.2.1 生成证书
-进入chromium/src/net/tools/quic/certs目录，执行：
+首先，我们需要有一个支持quic播放的流媒体服务器和一条流。
 
-```
-./generate-certs.sh
-```
-out目录下就是产生的证书。
-### 5.2.2 安装证书
-进入chromium/src/net/tools/quic/certs/out目录，执行：
+> 可以使用[nginx-quic](https://github.com/evansun922/nginx-quic/blob/master/README-CN.md) 或者[腾讯云quic测试小程序](https://github.com/tencentyun/qcloud-documents/blob/master/product/%E8%A7%86%E9%A2%91%E6%9C%8D%E5%8A%A1/%E7%9B%B4%E6%92%AD/%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5/QUIC%E7%9B%B4%E6%92%AD.md#push)来产生支持quic的流
 
-```
-certutil -addstore -f "ROOT" 2048-sha256-root.pem
-```
-## 5.3 启动quic-server
-在chromium/src目录下，执行：
-```
-./out/Debug/quic_server   --quic_response_cache_dir=/tmp/quic-data/www.example.org   --certificate_file=net/tools/quic/certs/out/leaf_cert.pem   --key_file=net/tools/quic/certs/out/leaf_cert.pkcs8
-```
-## 5.4 启动ffplay
-在FFmpeg/build目录下，执行：
+假定我们有条流地址为：`https://example.com/live/teststream.flv`
 
-```
-./ffplay quic://www.example.org:6121 -timeout 1000 -verify_certificate 1
-```
-> 如果设置-verify_certificate 0，则可以省略证书生成和安装环节。
+然后我们启动`ffplay`:
 
-![在这里插入图片描述](https://img-blog.csdnimg.cn/20190404171904781.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3NvbnlzdXFpbg==,size_16,color_FFFFFF,t_70)
+```sh
+$ ffplay quics://example.com/live/teststream.flv
+```
+
+注意：如果直接传入http或https开头的留地址给ffplay，是不会触发quic模块的。需要将 http 换成 quic, https 换成 quics，才能触发quic模块。
