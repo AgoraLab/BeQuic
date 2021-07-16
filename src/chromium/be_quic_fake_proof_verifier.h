@@ -12,7 +12,7 @@ public:
         const uint16_t port,
         const std::string& server_config,
         quic::QuicTransportVersion quic_version,
-        quic::QuicStringPiece chlo_hash,
+        absl::string_view chlo_hash,
         const std::vector<std::string>& certs,
         const std::string& cert_sct,
         const std::string& signature,
@@ -22,12 +22,16 @@ public:
         std::unique_ptr<quic::ProofVerifierCallback> callback) override;
 
     quic::QuicAsyncStatus VerifyCertChain(
-        const std::string& hostname,
-        const std::vector<std::string>& certs,
-        const quic::ProofVerifyContext* verify_context,
-        std::string* error_details,
-        std::unique_ptr<quic::ProofVerifyDetails>* verify_details,
-        std::unique_ptr<quic::ProofVerifierCallback> callback) override;
+            const std::string& hostname,
+            const uint16_t port,
+            const std::vector<std::string>& certs,
+            const std::string& ocsp_response,
+            const std::string& cert_sct,
+            const ProofVerifyContext* context,
+            std::string* error_details,
+            std::unique_ptr<ProofVerifyDetails>* details,
+            uint8_t* out_alert,
+            std::unique_ptr<ProofVerifierCallback> callback) override;
 
     std::unique_ptr<quic::ProofVerifyContext> CreateDefaultContext() override;
 };

@@ -10,7 +10,7 @@ class BeQuicSpdyClientStream : public QuicSpdyClientStream {
 public:
     BeQuicSpdyClientStream(QuicStreamId id, QuicSpdyClientSession* session, StreamType type);
 
-    BeQuicSpdyClientStream(PendingStream pending, QuicSpdyClientSession* spdy_session, StreamType type);
+    BeQuicSpdyClientStream(PendingStream* pending, QuicSpdyClientSession* spdy_session, StreamType type);
 
     BeQuicSpdyClientStream(const BeQuicSpdyClientStream&) = delete;
 

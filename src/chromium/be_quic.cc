@@ -2,14 +2,14 @@
 #include "net/tools/quic/be_quic_client_manager.h"
 #include "base/command_line.h"
 #include "base/logging.h"
-#include "base/task/task_scheduler/task_scheduler.h"
+#include "base/task/thread_pool/thread_pool_instance.h"
 
 //External log callback set by be_quic_set_log_callback method.
 BeQuicLogCallback g_external_log_callback = NULL;
 
 //Hook internal log.
 bool internal_log_callback(int severity, const char* file, int line, size_t message_start, const std::string& str) {
-    const char *severities[logging::LOG_NUM_SEVERITIES + 1] = {
+    const char *severities[logging::LOGGING_NUM_SEVERITIES + 1] = {
         "Verbose",
         "Info",
         "Warning",
@@ -82,10 +82,12 @@ int BE_QUIC_CALL be_quic_open(
 #endif
 
             //Startup TaskScheduler.
-            base::TaskScheduler::CreateAndStartWithDefaultParams("be_quic");
+            base::ThreadPoolInstance::CreateAndStartWithDefaultParams("be_quic");
 
             //Disable resending queued data.
-            SetQuicReloadableFlag(enable_quic_stateless_reject_support, false);
+            //'enable_quic_stateless_reject_support' has been removed from 
+            //"net/third_party/quiche/src/quic/core/quic_protocol_flags_list.h"
+            //SetQuicReloadableFlag(enable_quic_stateless_reject_support, false);
 
             first_invoke = false;
             LOG(INFO) << "BeQuic 1.0" << std::endl;
@@ -113,7 +115,7 @@ int BE_QUIC_CALL be_quic_open(
         }
         
         //Check transport version.
-        if (transport_version != -1 && (transport_version < quic::QUIC_VERSION_39 || transport_version > quic::QUIC_VERSION_99)) {
+        if (transport_version != -1 && (transport_version < quic::QUIC_VERSION_43 || transport_version > quic::QUIC_VERSION_RESERVED_FOR_NEGOTIATION)) {
             ret = kBeQuicErrorCode_Invalid_Version;
             LOG(ERROR) << "Transport version " << transport_version << " is invalid."<< std::endl;
             break;

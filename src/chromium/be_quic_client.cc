@@ -7,7 +7,6 @@
 #include "net/cert/cert_verifier.h"
 #include "net/cert/ct_log_verifier.h"
 #include "net/cert/ct_policy_enforcer.h"
-#include "net/cert/multi_log_ct_verifier.h"
 #include "net/http/transport_security_state.h"
 #include "net/quic/crypto/proof_verifier_chromium.h"
 #include "net/spdy/spdy_http_utils.h"
@@ -17,12 +16,12 @@
 #include "net/third_party/quiche/src/quic/core/quic_packets.h"
 #include "net/third_party/quiche/src/quic/core/quic_server_id.h"
 #include "net/third_party/quiche/src/quic/platform/api/quic_socket_address.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_string_piece.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_text_utils.h"
+#include "net/third_party/quiche/src/common/quiche_text_utils.h"
 #include "net/third_party/quiche/src/quic/tools/quic_client_base.h"
 #include "net/third_party/quiche/src/spdy/core/spdy_header_block.h"
 #include "base/logging.h"
 #include "base/strings/string_split.h"
+#include "absl/strings/string_view.h"
 #include "url/gurl.h"
 
 using net::CertVerifier;
@@ -30,8 +29,6 @@ using net::CTVerifier;
 using net::MultiLogCTVerifier;
 using quic::ProofVerifier;
 using net::ProofVerifierChromium;
-using quic::QuicStringPiece;
-using quic::QuicTextUtils;
 using net::TransportSecurityState;
 using spdy::SpdyHeaderBlock;
 
@@ -43,6 +40,7 @@ using spdy::SpdyHeaderBlock;
 namespace net {
 
 const int kReadBlockSize = 32768;
+
 
 BeQuicClient::BeQuicClient(int handle)
     : base::SimpleThread("BeQuic"),
@@ -149,7 +147,7 @@ int BeQuicClient::request(
             break;
         }
 
-        if (message_loop_ == NULL) {
+        if(task_executor_  == NULL) {
             ret = kBeQuicErrorCode_Null_Pointer;
             break;
         }
@@ -161,7 +159,7 @@ int BeQuicClient::request(
 
         LOG(INFO) << "Request " << url << " with method " << method << std::endl;
 
-        message_loop_->task_runner()->PostTask(
+        task_executor_->task_runner()->PostTask(
             FROM_HERE,
             base::BindOnce(
                 &BeQuicClient::request_internal,
@@ -210,8 +208,8 @@ void BeQuicClient::close() {
 
     //Stop message loop.
     running_ = false;
-    if (message_loop_ != NULL && run_loop_ != NULL) {
-        message_loop_->task_runner()->PostTask(FROM_HERE, run_loop_->QuitClosure());
+    if (task_executor_ != NULL && run_loop_ != NULL) {
+        task_executor_->task_runner()->PostTask(FROM_HERE, run_loop_->QuitClosure());
     }
 
     //Wait for thread exit.
@@ -276,13 +274,13 @@ int64_t BeQuicClient::seek(int64_t off, int whence) {
             break;
         }
 
-        if (message_loop_ == NULL) {
+        if (task_executor_ == NULL) {
             ret = kBeQuicErrorCode_Null_Pointer;
             break;
         }
 
         IntPromisePtr promise(new IntPromise);
-        message_loop_->task_runner()->PostTask(
+        task_executor_->task_runner()->PostTask(
             FROM_HERE,
             base::BindOnce(
                 &BeQuicClient::seek_internal,
@@ -311,13 +309,13 @@ int BeQuicClient::get_stats(BeQuicStats *stats) {
             break;
         }
 
-        if (message_loop_ == NULL) {
+        if (task_executor_ == NULL) {
             ret = kBeQuicErrorCode_Null_Pointer;
             break;
         }
 
         IntPromisePtr promise(new IntPromise);
-        message_loop_->task_runner()->PostTask(
+        task_executor_->task_runner()->PostTask(
             FROM_HERE,
             base::BindOnce(
                 &BeQuicClient::get_stats_internal,
@@ -354,8 +352,7 @@ void BeQuicClient::on_stream_created(quic::QuicSpdyClientStream *stream) {
         LOG(INFO) << "Close old stream " << old_stream_id << std::endl;
 
         //Close quic stream, send Reset frame to close peer stream.
-        session->SendRstStream(old_stream_id, quic::QUIC_STREAM_CANCELLED, 0);
-        session->CloseStream(old_stream_id);
+        session->ResetStream(old_stream_id, quic::QUIC_STREAM_CANCELLED);
     } while (0);
 }
 
@@ -403,8 +400,8 @@ void BeQuicClient::on_data(quic::QuicSpdyClientStream *stream, char *buf, int si
 bool BeQuicClient::on_preload_range(int64_t start, int64_t end) {
     bool ret = true;
     do {
-        if (message_loop_ == NULL) {
-            LOG(ERROR) << "on_preload_range invalid param message_loop_:NULL." << std::endl;
+        if (task_executor_ == NULL) {
+            LOG(ERROR) << "on_preload_range invalid param task_executor:NULL." << std::endl;
             ret = false;
             break;
         }
@@ -421,10 +418,7 @@ bool BeQuicClient::on_preload_range(int64_t start, int64_t end) {
             break;
         }
 
-        if (0) {
-            request_range(start, end, NULL);
-        } else {
-            message_loop_->task_runner()->PostTask(
+        task_executor_->task_runner()->PostTask(
                 FROM_HERE,
                 base::BindOnce(
                     &BeQuicClient::request_range,
@@ -432,7 +426,6 @@ bool BeQuicClient::on_preload_range(int64_t start, int64_t end) {
                     start,
                     end,
                     (int*)NULL));
-        }
     } while (0);
     return ret;
 }
@@ -444,11 +437,11 @@ void BeQuicClient::Run() {
     running_ = true;
 
     //Bind message loop.
-    std::unique_ptr<base::MessageLoopForIO> message_loop(new base::MessageLoopForIO);
+    std::unique_ptr<base::SingleThreadTaskExecutor> task_executor(new base::SingleThreadTaskExecutor(base::MessagePumpType::IO));
     std::unique_ptr<base::RunLoop> run_loop(new base::RunLoop);
 
     //For invoking from another thread.
-    message_loop_   = message_loop.get();
+    task_executor_  = task_executor.get();
     run_loop_       = run_loop.get();
 
     //Internally open.
@@ -494,7 +487,7 @@ void BeQuicClient::Run() {
     ietf_draft_version_     = -1;
     handshake_version_      = -1;
     transport_version_      = -1;
-    message_loop_           = NULL;
+    task_executor_          = NULL;
     run_loop_               = NULL;
     running_                = false;
 
@@ -566,7 +559,13 @@ int BeQuicClient::open_internal(
         resolve_time_ = resolve_time.InMicroseconds();
 
         //Make up QuicIpAddress.
-        quic::QuicIpAddress ip_addr = quic::QuicIpAddress(quic::QuicIpAddressImpl(addresses[0].address()));
+        struct sockaddr_in skaddr;
+        socklen_t sklen = sizeof(skaddr);
+        if (!addresses[0].ToSockAddr((struct sockaddr*)&skaddr, &sklen)) {
+            ret = kBeQuicErrorCode_Invalid_Param;
+            break;
+        }
+        quic::QuicIpAddress ip_addr(skaddr.sin_addr);
         LOG(INFO) << "Resolve to " << ip_addr.ToString() << " using " << resolve_time_ / 1000 << " ms." << std::endl;
 
         //Make up serverid.
@@ -588,9 +587,9 @@ int BeQuicClient::open_internal(
         }
 
         //Create certificate verifier.
-        std::unique_ptr<CertVerifier>           cert_verifier(CertVerifier::CreateDefault());
+        std::unique_ptr<CertVerifier>           cert_verifier(CertVerifier::CreateDefault(/*cert_net_fetcher=*/nullptr));
         std::unique_ptr<TransportSecurityState> transport_security_state(new TransportSecurityState);
-        std::unique_ptr<MultiLogCTVerifier>     ct_verifier(new MultiLogCTVerifier());
+        std::unique_ptr<MultiLogCTVerifier>     ct_verifier(new MultiLogCTVerifier(this));
         std::unique_ptr<net::CTPolicyEnforcer>  ct_policy_enforcer(new net::DefaultCTPolicyEnforcer());
         std::unique_ptr<quic::ProofVerifier>    proof_verifier;
         if (!verify_certificate) {
@@ -600,7 +599,9 @@ int BeQuicClient::open_internal(
             cert_verifier.get(),
             ct_policy_enforcer.get(),
             transport_security_state.get(),
-            ct_verifier.get()));
+            /*sct_auditing_delegate=*/nullptr,
+            {"test.example.com"},
+            NetworkIsolationKey()));
         }
 
         //Must create real client in this thread or tls object won't work.
@@ -653,10 +654,8 @@ int BeQuicClient::open_internal(
                 continue;
             }  
 
-            QuicStringPiece key     = header.key;
-            QuicStringPiece value   = header.value; 
-            quic::QuicTextUtils::RemoveLeadingAndTrailingWhitespace(&key);
-            quic::QuicTextUtils::RemoveLeadingAndTrailingWhitespace(&value);
+            absl::string_view key     = absl::StripAsciiWhitespace(header.key);
+            absl::string_view value   = absl::StripAsciiWhitespace(header.value); 
             header_block_[key]       = value;
         }
 
@@ -735,10 +734,8 @@ void BeQuicClient::request_internal(
                 continue;
             }  
 
-            QuicStringPiece key     = header.key;
-            QuicStringPiece value   = header.value; 
-            quic::QuicTextUtils::RemoveLeadingAndTrailingWhitespace(&key);
-            quic::QuicTextUtils::RemoveLeadingAndTrailingWhitespace(&value);
+            absl::string_view key     = absl::StripAsciiWhitespace(header.key);
+            absl::string_view value   = absl::StripAsciiWhitespace(header.value); 
             header_block_[key]       = value;
         }
 
@@ -927,8 +924,7 @@ bool BeQuicClient::close_current_stream() {
         LOG(INFO) << "Closing stream " << current_stream_id_ << std::endl;
 
         //Close quic stream, send Reset frame to close peer stream.
-        session->SendRstStream(current_stream_id_, quic::QUIC_STREAM_CANCELLED, 0);
-        session->CloseStream(current_stream_id_);
+        session->ResetStream(current_stream_id_, quic::QUIC_STREAM_CANCELLED);
 
         current_stream_id_ = 0;
     } while (0);

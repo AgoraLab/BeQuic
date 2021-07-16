@@ -1,13 +1,15 @@
 #ifndef __BE_QUIC_CLIENT_H__
 #define __BE_QUIC_CLIENT_H__
 
-#include "net/tools/quic/be_quic_define.h"
-#include "base/message_loop/message_loop.h"
 #include "base/threading/simple_thread.h"
+#include "base/task/single_thread_task_executor.h"
+#include "base/run_loop.h"
+#include "net/tools/quic/be_quic_define.h"
 #include "net/tools/quic/be_quic_block.h"
 #include "net/tools/quic/be_quic_spdy_client.h"
 #include "net/tools/quic/be_quic_spdy_data_delegate.h"
 #include "net/tools/quic/streambuf.hpp"
+#include "net/cert/multi_log_ct_verifier.h"
 
 #include <memory>
 #include <vector>
@@ -39,6 +41,7 @@ class BeQuicClient :
     public base::SimpleThread, 
     public BeQuicSpdyDataDelegate,
     public BeQuicBlockPreloadDelegate,
+    public net::MultiLogCTVerifier::CTLogProvider, // DoNothing
     public std::enable_shared_from_this<BeQuicClient> {
 public:
     typedef std::shared_ptr<BeQuicClient> Ptr;
@@ -145,7 +148,7 @@ private:
     IntPromisePtr open_promise_;
     std::atomic_bool busy_;     //Flag indicate if invoke thread called open/close.
     std::atomic_bool running_;  //Flag indicate if worker thread running.
-    base::MessageLoopForIO *message_loop_ = NULL;
+    base::SingleThreadTaskExecutor* task_executor_=  NULL;
     base::RunLoop *run_loop_    = NULL;
     base::Time start_time_;
     int64_t resolve_time_       = 0;

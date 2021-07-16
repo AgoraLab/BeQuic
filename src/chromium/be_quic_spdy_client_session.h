@@ -30,7 +30,7 @@ public:
     void set_delegate(std::weak_ptr<net::BeQuicSpdyDataDelegate> delegate) { delegate_ = delegate; }
 
     //Rewrite OnConnectionClosed.
-    void OnConnectionClosed(QuicErrorCode error, const std::string& error_details, ConnectionCloseSource source) override;
+    void OnConnectionClosed(const QuicConnectionCloseFrame& frame, ConnectionCloseSource source) override;
 
     //Control ping request.
     bool ShouldKeepConnectionAlive() const override;

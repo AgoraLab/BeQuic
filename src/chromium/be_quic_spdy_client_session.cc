@@ -25,7 +25,7 @@ BeQuicSpdyClientSession::~BeQuicSpdyClientSession() {
 }
 
 std::unique_ptr<QuicSpdyClientStream> BeQuicSpdyClientSession::CreateClientStream() {
-    std::unique_ptr<BeQuicSpdyClientStream> stream = QuicMakeUnique<BeQuicSpdyClientStream>(
+    std::unique_ptr<BeQuicSpdyClientStream> stream = std::make_unique<BeQuicSpdyClientStream>(
         GetNextOutgoingBidirectionalStreamId(), this, BIDIRECTIONAL);
     stream.get()->set_delegate(delegate_);
 
@@ -37,12 +37,12 @@ std::unique_ptr<QuicSpdyClientStream> BeQuicSpdyClientSession::CreateClientStrea
     return stream;
 }
 
-void BeQuicSpdyClientSession::OnConnectionClosed(QuicErrorCode error, const std::string& error_details, ConnectionCloseSource source) {
-    LOG(INFO) << "Session " << connection_id().ToString() << " closed, error:" << quic::QuicErrorCodeToString(error)
-              << ", details:" << error_details << ", source:"
+void BeQuicSpdyClientSession::OnConnectionClosed(const QuicConnectionCloseFrame& frame, ConnectionCloseSource source) {
+    LOG(INFO) << "Session " << connection_id().ToString() << " closed, error:" << quic::QuicErrorCodeToString(frame.quic_error_code)
+              << ", details:" << frame.error_details << ", source:"
               << static_cast<std::underlying_type<ConnectionCloseSource>::type>(source);
 
-    quic::QuicSession::OnConnectionClosed(error, error_details, source);
+    quic::QuicSession::OnConnectionClosed(frame, source);
 }
 
 bool BeQuicSpdyClientSession::ShouldKeepConnectionAlive() const {

@@ -23,7 +23,6 @@
 #include "net/third_party/quiche/src/quic/core/quic_packets.h"
 #include "net/third_party/quiche/src/quic/core/quic_server_id.h"
 #include "net/third_party/quiche/src/quic/platform/api/quic_flags.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_ptr_util.h"
 #include "net/third_party/quiche/src/spdy/core/spdy_header_block.h"
 
 #include <utility>
@@ -42,8 +41,8 @@ BeQuicSpdyClient::BeQuicSpdyClient(
         quic::QuicConfig(),
         CreateQuicConnectionHelper(),
         CreateQuicAlarmFactory(),
-        quic::QuicWrapUnique(new BeQuicClientMessageLooplNetworkHelper(&clock_, this)),
-        std::move(proof_verifier)),
+        std::unique_ptr<BeQuicClientMessageLooplNetworkHelper>(new BeQuicClientMessageLooplNetworkHelper(&clock_, this)),
+        std::move(proof_verifier), nullptr),
       data_delegate_(data_delegate),
       weak_factory_(this) {
     set_server_address(server_address);
@@ -69,7 +68,7 @@ QuicChromiumAlarmFactory* BeQuicSpdyClient::CreateQuicAlarmFactory() {
 std::unique_ptr<quic::QuicSession> BeQuicSpdyClient::CreateQuicClientSession(
         const quic::ParsedQuicVersionVector& supported_versions,
         quic::QuicConnection* connection) {
-    std::unique_ptr<quic::BeQuicSpdyClientSession> session = quic::QuicMakeUnique<quic::BeQuicSpdyClientSession>(
+    std::unique_ptr<quic::BeQuicSpdyClientSession> session = std::make_unique<quic::BeQuicSpdyClientSession>(
         *config(),
         supported_versions,
         connection,

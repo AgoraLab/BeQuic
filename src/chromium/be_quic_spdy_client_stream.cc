@@ -1,7 +1,8 @@
 #include "net/tools/quic/be_quic_spdy_client_stream.h"
 #include "net/third_party/quiche/src/quic/core/http/spdy_utils.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_map_util.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_text_utils.h"
+#include "net/third_party/quiche/src/common/quiche_text_utils.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/str_split.h"
 
 namespace quic {
 
@@ -10,8 +11,8 @@ BeQuicSpdyClientStream::BeQuicSpdyClientStream(QuicStreamId id, QuicSpdyClientSe
 
 }
 
-BeQuicSpdyClientStream::BeQuicSpdyClientStream(PendingStream pending, QuicSpdyClientSession* spdy_session, StreamType type)
-    : QuicSpdyClientStream(std::move(pending), spdy_session, type) {
+BeQuicSpdyClientStream::BeQuicSpdyClientStream(PendingStream* pending, QuicSpdyClientSession* spdy_session, StreamType type)
+    : QuicSpdyClientStream(pending, spdy_session, type) {
 
 }
 
@@ -91,7 +92,7 @@ int64_t BeQuicSpdyClientStream::check_content_length() {
     }
 
     const spdy::SpdyHeaderBlock& headers = QuicSpdyClientStream::response_headers();
-    if (QuicContainsKey(headers, "content-length")) {
+    if (headers.find("content-length") != headers.end()) {
         SpdyUtils::ExtractContentLengthFromHeaders(&content_length_, (spdy::SpdyHeaderBlock*)&headers);
     }
 
@@ -111,16 +112,16 @@ int64_t BeQuicSpdyClientStream::check_file_size() {
         }
 
         bool valid = false;
-        QuicStringPiece content_range_header = iter->second;
-        std::vector<QuicStringPiece> values = QuicTextUtils::Split(content_range_header, '\0');
-        for (const QuicStringPiece& value : values) {
-            std::vector<QuicStringPiece> parts = QuicTextUtils::Split(value, '/');
+        absl::string_view content_range_header = iter->second;
+        std::vector<absl::string_view> values = absl::StrSplit(content_range_header, '\0');
+        for (const absl::string_view& value : values) {
+            std::vector<absl::string_view> parts = absl::StrSplit(value, '/');
             if (parts.size() != 2) {
                 continue;
             }
 
             uint64_t new_value = -1;
-            if (!QuicTextUtils::StringToUint64(parts[1], &new_value)) {
+            if (!absl::SimpleAtoi(parts[1], &new_value)) {
                 QUIC_DLOG(ERROR) << "Content range was either unparseable or negative.";
                 break;
             }
