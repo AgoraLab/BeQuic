@@ -297,7 +297,7 @@ git clone https://github.com/bookxiao/BeQuic.git
 #### 4.3.3.4 生成工程
 在chromium/src下执行：
 ```
-gn gen out/linux_release_x64_notcmalloc --args="is_debug=false is_component_build=false target_os=\"linux\" target_cpu=\"x64\" use_allocator=\"none\""
+gn gen out/linux_release_x64 --args="is_debug=false is_component_build=false target_os=\"linux\" target_cpu=\"x64\" use_allocator=\"none\""
 ```
 这里可以决定是产生Debug版还是Release版；
 user_allocator="none" ：表示编译时malloc等系统库使用系统库函数，而不调用chromium自己实现的tcmalloc。
@@ -324,11 +324,14 @@ git clone https://github.com/sonysuqin/FFmpeg.git
 在FFmpeg下创建build目录，并进入FFmpeg/build目录，执行
 
 ```
-../configure --disable-static --enable-shared --enable-gpl --enable-version3 --enable-sdl --enable-debug=3 --disable-optimizations --disable-mmx --disable-stripping --arch=x64 --enable-libbequic --extra-cflags="-I../../quic/chromium/src/net/tools/quic -fPIC" --extra-ldflags="-L../../quic/chromium/src/out/linux_release_x64 -fPIC" --extra-libs=-lbequic --prefix=../linux
+../configure --disable-static --enable-shared --enable-gpl --enable-version3 --enable-sdl \
+    --enable-debug=3 --disable-optimizations --disable-mmx --disable-stripping --arch=x86_64 \
+    --enable-libbequic --extra-cflags="-I../../chromium/src/net/tools/quic -fPIC" \
+    --extra-ldflags="-L../../chromium/src/out/linux_release_x64 -fPIC" --extra-libs=-lbequic --prefix=../linux
 ```
 注意修改–extra-cflags、–extra-ldflags为实际的bequic库的头文件、库文件的路径.。
 
-如果出现`C compiler test failed.`错误，可以将`configure`中的这一行修改成：
+- 如果出现`C compiler test failed.`错误，可以将`configure`中的这一行修改成：
 
 ```sh
 diff --git a/configure b/configure
@@ -344,6 +347,7 @@ index a1cff7a4ce..dd7742951a 100755
 +    test_cmd $ld $LDFLAGS $LDEXEFLAGS $flags $(ld_o $TMPE) $TMPO $libs
  }
 ```
+- 如果出现 libsdl2 找不到的话，执行 `apt install libsdl2-dev` 即可
 
 #### 4.3.4.3 编译
 
